@@ -37,6 +37,20 @@ Accept these parameters from the user (ask if not provided):
 - **interval**: Sleep duration between checks in seconds (default: 30)
 - **iterations**: Number of loops to run (default: infinite, use "continuous")
 - **task_id**: Background task ID from previous iteration (for continuous monitoring)
+- **telegram_enabled**: Whether to send Telegram notifications (optional, auto-detected from env vars)
+- **healing_mode**: Self-healing aggressiveness (options: "passive", "conservative", "aggressive", default: "conservative")
+  - passive: Only report issues, no auto-fixing
+  - conservative: Auto-fix safe issues (restarts, kill processes, install dependencies)
+  - aggressive: Auto-fix code issues, config changes, everything possible
+
+## Telegram Notifications (Optional)
+
+The skill supports sending status reports via Telegram. This is completely optional and requires:
+
+- **TELEGRAM_BOT_TOKEN**: Environment variable with your bot token from @BotFather
+- **TELEGRAM_CHAT_ID**: Environment variable with your chat ID (get from @userinfobot)
+
+If these environment variables are set, the skill will automatically send status updates to Telegram after each check. If not set, monitoring continues normally without Telegram notifications.
 
 ## Behavior Guidelines
 
@@ -62,6 +76,29 @@ Accept these parameters from the user (ask if not provided):
    - Key findings from logs/checks (errors, warnings, important messages)
    - Whether the process is still running
    - Next check scheduled time
+   - If Telegram is configured (TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID env vars are set), send the status report to Telegram as well
+
+4b. **Self-Healing (if enabled)**: After analyzing the output, use your capabilities as Claude Code to fix issues automatically:
+   - **Passive mode**: Only report issues, never auto-fix
+   - **Conservative mode** (default): Auto-fix safe, reversible issues:
+     - Process crashed → Restart it
+     - Port already in use → Kill conflicting process and restart
+     - Missing dependencies → Run package manager install command
+     - Disk space full in /tmp → Clean up temp files
+     - Memory errors → Restart with increased memory limits
+   - **Aggressive mode**: Fix everything you can:
+     - All conservative fixes PLUS:
+     - TypeScript/compilation errors → Read errors, fix code, rebuild
+     - Configuration issues → Update config files
+     - Database connection issues → Restart connections, check DB health
+     - Test failures → Analyze failures, fix code, re-run tests
+
+   **Important self-healing guidelines:**
+   - Always report what you're about to do before doing it
+   - Verify the fix worked in the next iteration
+   - If a fix fails 3 times, stop auto-fixing and alert the user
+   - Never make destructive changes (delete data, drop tables, etc.) even in aggressive mode
+   - Always notify the user of fixes via Telegram (if configured)
 
 5. **Looping mechanism**: After reporting, automatically invoke:
    ```
@@ -105,6 +142,18 @@ Continuing monitoring... (invoking /ops again)
 - Use `Skill` tool to invoke this skill again for looping: `/ops <parameters>`
 - Keep track of iteration count in your loop invocations
 - Store the task_id from the background command to check it in subsequent iterations
+
+### Telegram Notifications Implementation
+
+To send Telegram notifications after each check:
+1. Check if Telegram is configured by running: `python3 /home/james/.claude/skills/ops/telegram_notifier.py` (without arguments)
+2. If configured, send status report using: `python3 /home/james/.claude/skills/ops/telegram_notifier.py "Your status message here"`
+3. Format the message with:
+   - Iteration number
+   - Process status (running/stopped)
+   - Key findings (errors, warnings)
+   - Timestamp
+4. Use Markdown formatting in messages for better readability
 
 ## State Persistence
 
